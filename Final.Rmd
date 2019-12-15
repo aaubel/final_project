@@ -1,0 +1,319 @@
+---
+title: "BST 260 Final Project"
+output: html_document
+---
+
+# Juvenile Probation in California
+### By Amanda Aubel
+
+First, download my dataset using the following link and save to your computer as a CSV file named "JCPSS_2012-2018.csv": https://data-openjustice.doj.ca.gov/sites/default/files/dataset/2019-07/JCPSS_2012-2018.xlsx
+
+
+## Overview and Motivation
+**The United States incarcerates more individuals than any other country in the world, both per capita and in absolute numbers.** I became aware of this fact my senior year of college, while taking a service-learning class on prisons. As part of the class, I attended weekly meetings with men recently released from prison who were considered at a high risk for _recidivism_, or returning to prison. The more I learned about how difficult it can be to break the cycle of incarceration, the more I became interested in prevention efforts and alternatives to incarceration. After college, I became involved with a restorative justice program for youth in Marin County, CA that aimed to prevent youth from _ever_ entering the criminal justice system.
+
+I worked directly with youth in the program, but I knew little about the broader system and context: How were the youth referred to the restorative justice program? Were all kids given an equal opportunity? Did other programs like this exist outside of Marin County? What happens to the kids that don't get to participate in these programs?
+
+For my final project, I wanted to learn more about the juvenile justice system in California: who ends up in this system, for which crimes, and what are the end points? While this information is of personal interest to me, I thought it could also inform decision-makers in California who are invested in reducing crime and mass incarceration.
+
+
+## Related Work
+In addition to my own interests and experience, my vision for this project was inspired by our unit on Shiny and, in particular, the case study on product-related injuries. I thought the injury case study was a compelling example of how to use Shiny for data exploration and how to engage users in the process! Thinking about different types of crimes reminded me of how we visualized injuries caused by different products. I also thought I might be able to replicate the graphs that allow users to select either counts or rates on the y-axis.
+
+
+## Initial Questions
+In general, I wanted to better understand the juvenile justice process in California and the young people that become involved in this sytem. I also wanted to learn more about the nature of juvenile crime. Specifically, I was interested in answering the following questions:
+
+1. Has the number/rate of crimes committed by youth changed over time? If so, what might explain these changes?
+2. What are the demographic characteristics of youth who have had contact with the juvenile justice system?
+3. What types of offenses are most common?
+4. Which variables predict the outcome of a case, for example, whether a case is dismissed, diverted, or sent to juvenile court?
+
+Over the course of the project, these questions evolved mostly due to the limitations of my data. I discuss this more in the Exploratory Analysis section of this file.
+
+
+## Data
+
+### Data source
+To answer these questions, I found a dataset from the California Department of Justice's Juvenile Court and Probation Statistical System (JCPSS). The dataset includes basic demographic and offense information for juveniles referred to County Probation agencies in California and describes what actions were taken. I chose a dataset that includes cases from 2012 to 2018 so I could look at some trends over time without overburdening my computer with an extremely large dataset. Initially, a major challenge for me was understanding what the variables and values meant as well as what each observation represented. This [data dictionary](https://data-openjustice.doj.ca.gov/sites/default/files/dataset/2019-07/JCPSS%20Context_062519.pdf) helped a little. A couple important things I learned about the dataset included:
+
+* The JCPSS tracks cases or referrals, not individuals. An individual may have multiple referrals in the same year. 
+* Not all Counties contribute data. For instance, Sierra County Probation does not participate and Lassen County Probation did not contribute data from 2016 to 2018. 
+* The number of referrals to probation is **not** the same as the number of juvenile arrests. These are two separate data systems that use different definitions. Furthermore, some juveniles are diverted out of the system before even being recorded in JCPSS. 
+
+### Cleanup
+The dataset was available in Excel format. My first step was to convert to a csv file and then load into R. Luckily, the dataset was already pretty clean and tidy. Because it was a large dataset (containing 639,852 rows and 17 columns), most of my analyses used a subset of the original dataset. I removed some variables that had large amounts of missing data or that didn't help answer my research questions.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+probation <- read.csv("JCPSS_2012-2018.csv") #Load data
+
+str(probation) #Examine dataset
+```
+
+
+```{r}
+mostrecent <- probation %>% filter(REPORT_YEAR==2018) %>% select(REPORT_YEAR, GENDER_DESC, RACE_DESC, AGE_GROUP, ACTION_TYPE_DESC, REFERRAL_TYPE, REFERRAL_SOURCE_DESC, OFFENSE_LEVEL, GROUP_OFFENSE_LEVEL, DISPOSITION_DESC) #Create subset for 2018 only
+
+str(mostrecent) #Examine dataset
+
+any(is.na(mostrecent)) #Check if there are any missing values
+```
+
+
+## Exploratory Analysis
+
+While my ultimate goal was to create a Shiny app that also serves as a website, I first created visualizations in R Studio to get a feel for the data and to figure out what worked and didn't work. The statistical analyses and visualizations I performed (as well as those I considered) are outlined below. 
+
+
+#### Time series analysis
+First, I was interested in looking at how the number or rate of juvenile crime in California has changed over time. To accomplish this, I created a time series plot showing the total number of probation referrals for each year in my dataset. While this might not exactly equal the number of crimes, it is a good estimate and reflects [other sources that have suggested a decrease in youth crime over time.](http://cfyj.org/images/factsheets/KeyYouthCrimeFactsJune72016final.pdf) 
+
+```{r}
+time <- probation %>% group_by(REPORT_YEAR) %>% summarize(count=n()) #Since each row represents a case, must count the number of rows by year to calculate the number of cases
+
+time %>% ggplot() + 
+  geom_line(aes(x=REPORT_YEAR, y=count/1000)) + #More visually appealing to look at cases by thousands
+  geom_text(aes(x=REPORT_YEAR, y=count/1000, label=count), nudge_y = -8) + #Add label and nudge below line
+  ylim(0,130) + #Start y axis at 0 to accurately reflect magnitude of change
+  scale_x_continuous(breaks=c(2012, 2013, 2014, 2015, 2016, 2017, 2018)) + #Show all years available on x axis
+  xlab("Year") + 
+  ylab("Number of cases (in thousands)") + 
+  ggtitle("Number of cases over time")
+```
+
+Calculating the rate of crime over time proved to be more difficult. I originally intended to use another dataset containing the size of the population that would allow me to calculate rates. However, I realized that the population from which this data is drawn is not well-defined. For example, the JCPSS lists the age groups "13 and Under", "14-15", "16-17" and "18 and Older", but it is unclear exactly which ages comprise the population. Surely we don't have 2-year olds or 50-year olds showing up in juvenile probation, but due to some uncertainty, I ultimately decided to just focus on counts instead of rates. 
+
+In addition to overall referrals, I thought it might be interesting to examine whether the number of referrals has similarly decreased for different groups of young people, such as those of different races or genders. We can see in the graph below that the number of cases has remained low among Asian/Pacific Islander and Other races and decreased among Black, Hispanic, and White youth. The largest absolute reduction over time has been among Hispanic youth: about 30,000 fewer cases over the 6-year period.
+
+```{r}
+time <- probation %>% group_by(REPORT_YEAR, RACE_DESC) %>% summarize(count=n())
+
+time %>% ggplot() + 
+  geom_line(aes(x=REPORT_YEAR, y=count/1000, color=RACE_DESC)) + #Group by race
+  ylim(0,75) + 
+  scale_x_continuous(breaks=c(2012, 2013, 2014, 2015, 2016, 2017, 2018)) + #Want to show all years available
+  xlab("Year") + 
+  ylab("Number of cases (in thousands)") + 
+  ggtitle("Number of cases over time, by race")
+```
+
+To better understand the nature of juvenile crime, I also examined whether different types of crimes have increased, decreased, or remained the same over time. The tile plot below displays the different types of misdemeanor-level offenses. It looks like all offenses have either decreased or remained the same over time. We can also see which types of offenses are more common than others. Due to the extremely high number of "Assault and Battery" cases compared to all other offenses, I decided to use the square root transformation to reduce the visual effect of this outlier and better show the variation in other types of offenses. 
+
+```{r}
+tile_type <- probation %>% filter(OFFENSE_LEVEL=="Misdemeanor") %>% group_by(REPORT_YEAR, GROUP_OFFENSE_LEVEL) %>% summarize(count=n())
+
+tile_type %>% ggplot() + 
+  geom_tile(aes(x=REPORT_YEAR, y=GROUP_OFFENSE_LEVEL, fill=count)) + 
+  scale_x_continuous(breaks=c(2012, 2013, 2014, 2015, 2016, 2017, 2018)) +
+  scale_fill_viridis_c("Number of cases", trans="sqrt") + #Square root transformation to show variation in less common offenses
+  ggtitle("Number of misdemeanor offenses over time, by type of offense") +
+  xlab("Year") +
+  ylab("")
+```
+
+
+#### Demographic information
+Next, I wanted to describe the demographic characteristics of the young people who come in contact with juvenile probation. For these analyses, I focused on the most recent  year, 2018. Based on the data visualization principles I learned in class, I decided to use bar charts and tables instead of pie charts. 
+
+In the bar chart below, we can see that there were nearly 3x as many males referred to probation than females in 2018. (Note: The JCPSS only includes two categories for "Gender": Male and Female. It is unclear how these designations are determined.)
+
+```{r}
+mostrecent %>% ggplot() + 
+  geom_bar(aes(x=GENDER_DESC)) + #geom_bar counts the number of cases in each group; don't need to use summarize() or n()
+  ggtitle("Number of cases by gender, 2018") +
+  xlab("") +
+  ylab("Count")
+
+gender <- mostrecent %>% group_by(GENDER_DESC) %>% summarize(count=n(), percent=count/nrow(mostrecent)) #Divide number of cases for each gender by total number of cases/rows to get percent
+gender
+```
+
+The graph below reveals that most cases in 2018 were 16- and 17-year-olds. 
+
+```{r}
+mostrecent %>% ggplot() + 
+  geom_bar(aes(x=AGE_GROUP)) +
+  ggtitle("Number of cases by age group, 2018") +
+  xlab("Age group") +
+  ylab("Count")
+
+age <- mostrecent %>% group_by(AGE_GROUP) %>% summarize(count=n(), percent=count/nrow(mostrecent)) #Divide number of cases for each age group by total number of cases/rows to get percent
+age
+```
+
+When we look at referrals stratified by race, we see that roughly the same number of White and Black youth were referred to probation and twice as many Hispanic youth were referred. In fact, 54.5% of all cases in 2018 were Hispanic youth. 
+
+```{r}
+mostrecent %>% ggplot() + 
+  geom_bar(aes(x=RACE_DESC)) +
+  ggtitle("Number of cases by race, 2018") +
+  xlab("") +
+  ylab("Count")
+
+race <- mostrecent %>% group_by(RACE_DESC) %>% summarize(count=n(), percent=count/nrow(mostrecent)) #Divide number of cases for each race by total number of cases/rows to get percent
+race
+```
+
+My initial plan was to calculate the _rate_ of referral by race to highlight whether certain racial groups are disproportionately sent to probation. However, given the ambiguous age range, different definitions of race and ethnicity, and missing data for some Counties, I realized I wasn't going to be able to find suitable census data to estimate the size of the population. 
+
+The closest thing I found was [this data table](https://www.kidsdata.org/topic/33/child-population-race/table#fmt=144&loc=2,127,347,331,348,336,171,321,345,357,332,324,369,358,362,360,337,327,364,356,217,353,328,354,323,352,320,339,334,365,343,330,367,344,355,366,368,265,349,361,4,273,59,370,326,322,341,338,350,342,329,325,359,351,363,340,335,1763,333&tf=108&ch=7,11,726,10,72,9,73&sortColumnId=0&sortType=asc) from Kidsdata, which contains the estimated percentage of the California population ages 0-17 by race/ethnicity in 2018. According to this source, 52.1% of the child population was Hispanic, 26.6% was White, 10.8% was Asian American, and 5.2% were African American/Black. Using these data as an approximation for our population, it appears that the number of referrals to probation is proportionate to the size of the population for Hispanics. On the other hand, the number of referrals is disproportionately low for Asians, somewhat low for Whites, and disproportionately high for Blacks. **In 2018, only 5.2% of the child population was Black, yet 20% of all referrals to juvenile probation were Black youth.**  
+
+Lastly, I was interested in stratifying cases by County to highlight regions in California that might need extra support in curbing juvenile crime. Although County Probation agencies each report their data to JCPSS, the dataset does not stratify by County, so I was unable to perform this analysis. 
+
+
+#### Offense and process details
+
+One of my other goals was to better understand the nature of juvenile crime and the juvenile justice process in California.
+
+As shown in the table below, I learned that in 2018 the vast majority of cases (88.9%) were referred to probation by law enforcement agencies. 1.9% of cases were referred by schools and less than 1% were referred by a parent or guardian. 
+
+```{r}
+mostrecent %>% group_by(REFERRAL_SOURCE_DESC) %>% summarize(count=n(), percent=count/nrow(mostrecent))
+```
+
+69% of these referrals were "new", meaning youth who are not currently supervised by the probation department and are typically first-time offenders. The other 31% were "subsequent", which refers to youth who are currently supervised by the probation department and generally results from a new arrest or probation violation.
+
+```{r}
+mostrecent %>% group_by(REFERRAL_TYPE) %>% summarize(count=n(), percent=count/nrow(mostrecent))
+```
+
+
+Half (50.2%) of all referrals were for misdemeanor-level offenses, 36.2% were for felonies, and 13.6% were for status offenses. (Note: As many as five offenses can be reported for each referral, but the JCPSS publishes only the most serious offense per referral.)
+
+
+```{r}
+mostrecent %>% group_by(OFFENSE_LEVEL) %>% summarize(count=n(), percent=count/nrow(mostrecent))
+```
+
+
+We've already seen the prevalence of different misdemeanor-level offenses in our tile plot above. However, I was also interested in learning about the different types and frequencies of felony and status offenses. The table below displays the number of referrals by offense level and type. Among felonies, the most common offenses were Assault (4,574 cases), Robbery (3,631 cases), and Burglary (2,984 cases). Among misdemeanor and status offenses, some of the most surprising categories were Annoying Children (204 cases),  Joy Riding (125 cases), and Incorrigible (147 cases). Although somewhat humorous, it also concerns me that kids are being "criminalized" for these behaviors. 
+
+```{r}
+mostrecent %>% group_by(OFFENSE_LEVEL, GROUP_OFFENSE_LEVEL) %>% summarize(count=n())
+```
+
+I also learned that the juvenile justice process happens in two stages: referral and court.
+
+First, when youth are referred to probation, the probation department conducts an investigation and determines whether the case should be handled informally by the probation department or formally by the juvenile court. In 2018, 45.0% of cases were handled by the probation department and 55.0% were sent to juvenile court. 
+
+```{r}
+mostrecent %>% group_by(ACTION_TYPE_DESC) %>% summarize(count=n(), percent=count/nrow(mostrecent))
+```
+
+Among the cases that remained in the probation department, nearly three out of four (73.1%) were closed at intake. Another 16.2% received diversion. 
+
+```{r}
+referral <- mostrecent %>% filter(ACTION_TYPE_DESC=="Referral") 
+
+referral %>% group_by(DISPOSITION_DESC) %>% summarize(count=n(), percent=count/nrow(referral))
+```
+
+Second, if the case proceeds for formal processing, the district attorney files a petition with the juvenile court to initiate court action. Of the 35,760 cases filed in juvenile court in 2018, 59.6% resulted in wardship probation and 18.1% were dismissed. [Wardship probation](https://monocounty.ca.gov/probation/page/types-juvenile-probation-0) means that the Court has jurisdiction over the minor as if the Court was the minor’s parent. Wardship probation also allows the Probation Department to remove a juvenile from their home if necessary.
+
+
+```{r}
+court <- mostrecent %>% filter(ACTION_TYPE_DESC=="Court") 
+
+court %>% group_by(DISPOSITION_DESC) %>% summarize(count=n(), percent=count/nrow(court))
+```
+
+### Logistic regression
+With my new understanding of the juvenile justice process, I then wanted to explore what factors might influence the outcome of a case, particularly the more serious outcomes. I used logistic regression to examine several outcomes from the two stages identified above, and included some independent variables available in my dataset. 
+
+While it would be interesting to see if certain crimes were associated with harsher outcomes, I ultimately decided not to include the variable GROUP_OFFENSE_LEVEL in my regression model because so many different types of crimes were reported. One potential solution would be to group crimes by type (e.g., property crimes, violent crimes) and use that as a predictor variable. However, I didn't have sufficient knowledge or time to make these groupings.  
+
+Due to the large number of observations, I only used data from 2018 in my regressions. 
+
+**My first question was: What variables predict whether a youth referred to probation is sent to juvenile court?**
+
+I created a binary outcome variable where "Court" = 1 and "No court" = 0. 
+
+```{r}
+mostrecent1 <- mostrecent %>% mutate(COURT=ifelse(ACTION_TYPE_DESC=="Court", 1, 0)) #Create new binary variable for cases that remained in probation (0) or were sent to juvenile court (1) 
+head(mostrecent1)
+sum(mostrecent1$COURT) #Check to make sure new variable was successfully created
+```
+
+Then I fit a regression model. I found that all but 3 of my coefficients were highly statistically significant (p<0.0001). This is probably due to the large sample size. I converted the estimated effects (log odds ratio) into odds ratios by exponentiating and found the following:
+
+Holding all else constant...
+
+* The odds of males being sent to juvenile court were about 25% higher than the odds for females (OR = 1.249246).
+* The odds of being sent to juvenile court were significantly higher for all races compared to Whites. Compared to Whites, Blacks had about 38% greater odds of being sent to court (OR = 1.37772).
+* The odds of being sent to juvenile court increased with age. Compared to 16- and 17-year olds, children under 13 had 55% lower odds of going to court (OR = 0.4548353) and youth ages 18 and older had 52% greater odds (OR = 1.521399).
+* The source of the referral also had a large impact. For example, cases referred to probation by parents were 97% less likely to go to court than cases referred by law enforcement (OR = 0.02751979)
+* Subsequent referrals were five times more likely to go to court than new referrals (OR = 5.040373).
+* Youth referred for misdemeanors and status offenses were significantly less likely to go to court than felony cases (OR = 0.2842105 and OR = 0.6323641, respectively).
+
+
+```{r}
+mostrecent1$RACE_DESC <- relevel(mostrecent1$RACE_DESC, ref = "White") #Set reference group for race to White
+mostrecent1$AGE_GROUP <- relevel(mostrecent1$AGE_GROUP, ref = "16 - 17") #Set reference group for age to 16-17
+
+model1 <- glm(COURT ~ GENDER_DESC + RACE_DESC + AGE_GROUP + REFERRAL_TYPE + REFERRAL_SOURCE_DESC + OFFENSE_LEVEL, family = binomial(link="logit"), data = mostrecent1) #Run logistic regression
+
+summary(model1) #Print results
+```
+
+**My second questions was: Among the cases that are filed in juvenile court, what factors are associated with the case resulting in wardship?** 
+
+I decided to focus on wardship because it is one of the more serious outcomes. In some serious cases, the juvenile is transferred to Adult Court. However, I chose not to examine this outcome because only a small number of cases were remanded to Adult Court in 2018 (n=77) and this practice is generally becoming less common.
+
+To perform the regression, I first create binary outcome variables for each of the potential outcomes or "dispositions," using a package I found online called "fastDummies." I added these columns to my "court" dataset, which contains only the cases that were sent to juvenile court. 
+
+Note: Be sure to install package "fastDummies" if you don't already have it!
+
+```{r}
+library(fastDummies)
+court <- dummy_cols(court, select_columns = "DISPOSITION_DESC") #Create binary variables from dispositions column, using my court dataframe 
+head(court)
+```
+
+I then fit a regression model, using the same predictor variables as before. Again, I found that many of the coefficients were highly statisitcally signficant (p<0.0001). In particular, I found that:
+
+Holding all else constant...
+
+* Among youth sent to juvenile court, males were 20% more likely to receive wardship than females (OR = 1.20204).
+* Blacks were 34% more likely and Hispanics 42% more likely to receive wardship than Whites (OR = 1.33996 and OR = 1.424513, respectively).
+* Compared to 16- and 17- years olds, all other age groups were significantly less likely to receive wardship.
+* Subsequent cases were four times more likely to result in wardship than new cases (OR = 4.264308).
+* Cases referred to probation by schools and subsequently sent to court were 69% less likely to result in wardship than cases referred by law enforcement (OR = 0.3117293). 
+* Among cases sent to juvenile court, misdemeanors were 37% less likely to receive wardship than felonies (OR = 0.632402) but status offenses were 72% more likely (OR = 1.7175)!
+
+```{r}
+court$RACE_DESC <- relevel(court$RACE_DESC, ref = "White") #Set reference group for race to White
+court$AGE_GROUP <- relevel(court$AGE_GROUP, ref = "16 - 17") #Set reference group for age to 16-17
+
+model2 <- glm(DISPOSITION_DESC_Wardship ~ GENDER_DESC + RACE_DESC + AGE_GROUP + REFERRAL_TYPE + REFERRAL_SOURCE_DESC + OFFENSE_LEVEL, family = binomial(link="logit"), data = court)
+
+summary(model2)
+```
+
+I was really surprised that youth referred for status offenses were _more likely_ to receive wardship than felony cases, and I wanted to explore further. I thought my results might be skewed if only a small number of status offense cases were sent to juvenile court, and among those, an even smaller number received wardship. However, the results below show that there were 6,136 status offense cases sent to juvenile court in 2018 and 4,676 of those received wardship. 
+
+Although it seems like wardship is a harsh consequence for status offenses, it might make sense for youth to become wards of the court if their parents are unable to manage them. I'm curious to learn more about this unique situation. 
+
+```{r}
+sum(probation$REPORT_YEAR==2018 & probation$ACTION_TYPE_DESC=="Court" & probation$OFFENSE_LEVEL=="Status Offense") #Count how many status offense cases are sent to court
+
+sum(probation$REPORT_YEAR==2018 & probation$OFFENSE_LEVEL=="Status Offense" & probation$DISPOSITION_DESC=="Wardship") #Count how many status offense cases receive wardship
+```
+
+## Final Analysis 
+
+Overall, I learned a lot about the juvenile justice process and was mostly able to answer my original research questions.
+
+Using data science, I discovered that: 
+
+* The number of youth referrals to California probation agencies has declined in recent years (decreased 48% between 2012 and 2018, to be exact!) This is true for all ages, races, genders, and offenses. 
+* Among youth referred to probation, the majority are male (76%), Hispanic (55%), and 16- or 17-years old (50%). Black youth are disproportionately referred to probation. 
+* Half of all cases are referred for misdemeanor-level offenses, followed by felonies and status offenses. The most common misdemeanor and felony offenses are assault and battery. 
+* There are several opportunities for cases to be dismissed or diverted from formal processing. Roughly half (45%) of cases are handled informally by probation and the other half (55%) are sent to juvenile court.
+* Of those sent to juvenile court, 60% of cases result in wardship. 
+* Similar factors predict whether a case is sent to juvenile court and whether it results in wardship. In general, these outcomes are significantly more likely when the case is male, non-White, older, referred by law enforcement, a subsequent referral, and a felony-level offense. The only exceptions are that, among cases sent to juvenile court, youth 18 and older are less likely to receive wardship than 16- and 17-year olds, and status offenses are more likely to receive wardship than felonies. 
+
+
+When interpreting this data, it is important to remember that it represents counts and not rates. Similarly, the population comprises youth actually referred to probation, not all youth "at-risk" for probation. The large number of observations increases my confidence in these results, but we must be mindful that some Counties did not report data and there are likely variations between Counties. Lastly, these data reflect a particular stage in the juvenile justice system (i.e., youth referred to probation), which does not necessarily equate the number of crimes, arrests, or convictions. Nevertheless, these data highlight potential areas for intervention and the role of probation agencies in keeping our youth _out_ of the criminal justice system. 
